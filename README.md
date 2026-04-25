@@ -103,8 +103,6 @@ UI is at `http://<your-nas-ip>:8080`.
 | `torrent.seed_ratio` | `1.0` | Stop seeding after reaching this ratio |
 | `media_filename_template` | `{title}/Season {season:02d}/...` | Jellyfin-compatible by default |
 
-Full reference in [`docs/07-config.md`](./docs/07-config.md).
-
 ![Settings](img/settings-page.png)
 
 ---
@@ -143,7 +141,6 @@ internal/
   api/               chi router + HTTP handlers
   ui/                embedded SvelteKit build
 web/                 SvelteKit source
-docs/                detailed specs
 ```
 
 ---

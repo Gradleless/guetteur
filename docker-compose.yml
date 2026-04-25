@@ -1,0 +1,53 @@
+services:
+  gluetun:
+    image: qmcgaw/gluetun:latest
+    container_name: gluetun
+    cap_add:
+      - NET_ADMIN
+    devices:
+      - /dev/net/tun:/dev/net/tun
+    environment:
+      - VPN_SERVICE_PROVIDER=nordvpn
+      - VPN_TYPE=wireguard
+      - WIREGUARD_PRIVATE_KEY=CHANGEME
+      - SERVER_COUNTRIES=Netherlands
+      - TZ=Europe/Paris
+      - FIREWALL_OUTBOUND_SUBNETS=192.249.0.0/16,10.0.0.0/8
+      - FIREWALL_INPUT_PORTS=8081
+    ports:
+      - "42069:42069"
+      - "42069:42069/udp"
+    networks:
+      - proxy
+    volumes:
+      - ./data/gluetun:/gluetun
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "https://ipinfo.io/ip"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  guetteur:
+    image: guetteur:latest
+    network_mode: "service:gluetun"
+    depends_on:
+      gluetun:
+        condition: service_healthy
+    environment:
+      - TZ=Europe/Paris
+      - CONFIG_PATH=/config/config.yaml
+      - DB_PATH=/data/guetteur.db
+      - MEDIA_DIR=/media
+      - DISCORD_WEBHOOK=
+      - NTFY_TOPIC=
+      - API_PORT=8080
+    volumes:
+      - ./config.yaml:/config/config.yaml:ro
+      - ./data/app:/data
+      - /volume1/Théâtre:/media
+    restart: unless-stopped
+
+networks:
+  proxy:
+    external: true

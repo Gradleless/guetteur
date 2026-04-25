@@ -1,0 +1,73 @@
+# guetteur configuration
+
+# How often to poll nyaa for each followed series (per-series filtered RSS).
+poll_interval: 3m
+
+# Preferred video quality. First match wins.
+quality_priority:
+  - "1080p"
+  - "720p"
+
+# Default whitelisted release groups. Apply to all followed series unless
+# overridden per-series in the DB. First in list = highest priority.
+default_groups:
+  - "SubsPlease"
+  - "Erai-raws"
+  - "ASW"
+
+# Preferred audio/subtitle languages. Case-insensitive substring match against
+# the release title. A release passes if it contains at least one of these terms,
+# OR if it contains no language indicator at all (e.g. SubsPlease releases).
+# Leave empty to disable language filtering.
+preferred_language: []
+
+# If the preferred group hasn't released X hours after the scheduled air time,
+# fall back to the next group in the list. Set to 0 to disable fallback.
+group_fallback_after: 12h
+
+# Minimum seeders on a torrent to consider it. Below this we skip.
+min_seeders: 3
+
+# Skip torrents that are batches when a single-ep release of the same ep exists,
+# and vice-versa. Batch detection is based on episode range (e.g. "01-12").
+prefer_single_episodes: true
+
+# When a batch is released after we already have single eps, replace them.
+replace_with_batch: false
+
+# Torrent client tuning.
+torrent:
+  listen_port: 42069
+  max_peers_per_torrent: 80
+  # Prioritize first and last pieces for streaming compatibility.
+  sequential_download: true
+  # Keep seeding after download completes (ratio or duration).
+  seed_ratio: 1.0
+  seed_duration: 48h
+
+# Disk safety: don't start a download if free space on DOWNLOAD_DIR < threshold.
+min_free_space_gb: 20
+
+# File naming when moving to MEDIA_DIR. Jellyfin/Plex-compatible.
+# Placeholders: {title}, {season:02d}, {episode:02d}, {group}, {resolution}
+media_filename_template: "{title}/Season {season:02d}/{title} - S{season:02d}E{episode:02d} [{group}][{resolution}].{ext}"
+
+# AniList sync: refresh seasonal schedule every N hours.
+anilist_refresh: 6h
+
+# Release matching
+match:
+  # Jaro-Winkler similarity threshold for title matching (0.0–1.0).
+  # Lower = more permissive, higher = stricter. Tune after watching false positives.
+  fuzzy_threshold: 0.85
+
+# When a batch supersedes single episodes, delete the old files after this delay.
+# 0s = never delete (safest default). Example: "168h" (7 days).
+delete_superseded_after: 0s
+
+# Notifications
+notifications:
+  on_episode_detected: true
+  on_download_start: true
+  on_download_complete: true
+  on_error: true

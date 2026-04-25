@@ -13,8 +13,9 @@ services:
       - SERVER_COUNTRIES=Netherlands
       - TZ=Europe/Paris
       - FIREWALL_OUTBOUND_SUBNETS=192.249.0.0/16,10.0.0.0/8
-      - FIREWALL_INPUT_PORTS=8081
+      - FIREWALL_INPUT_PORTS=8080
     ports:
+      - "8080:8080"
       - "42069:42069"
       - "42069:42069/udp"
     networks:

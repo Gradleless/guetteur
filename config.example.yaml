@@ -44,13 +44,19 @@ torrent:
   # Keep seeding after download completes (ratio or duration).
   seed_ratio: 1.0
   seed_duration: 48h
+  # Max simultaneous active downloads. Excess releases stay queued and start
+  # automatically as slots free up. 0 = unlimited (not recommended on a NAS).
+  max_concurrent_downloads: 3
+  # Bandwidth caps in Mbit/s. 0 = unlimited.
+  download_rate_limit_mbps: 0
+  upload_rate_limit_mbps: 0
 
 # Disk safety: don't start a download if free space on DOWNLOAD_DIR < threshold.
 min_free_space_gb: 20
 
 # File naming when moving to MEDIA_DIR. Jellyfin/Plex-compatible.
 # Placeholders: {title}, {season:02d}, {episode:02d}, {group}, {resolution}
-media_filename_template: "{title}/Season {season:02d}/{title} - S{season:02d}E{episode:02d} [{group}][{resolution}].{ext}"
+media_filename_template: "{title}{tmdb_tag}/Season {season:02d}/{title} - S{season:02d}E{episode:02d} [{group}][{resolution}].{ext}"
 
 # AniList sync: refresh seasonal schedule every N hours.
 anilist_refresh: 6h

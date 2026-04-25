@@ -1,0 +1,14 @@
+version: "2"
+sql:
+  - engine: "sqlite"
+    queries: "queries/"
+    schema: "migrations/"
+    gen:
+      go:
+        package: "dbgen"
+        out: "generated"
+        emit_json_tags: false
+        emit_prepared_queries: false
+        emit_interface: false
+        emit_exact_table_names: false
+        sql_package: "database/sql"

@@ -1,0 +1,23 @@
+{
+  "data": {
+    "Media": {
+      "id": 21,
+      "title": {
+        "romaji": "ONE PIECE",
+        "english": "ONE PIECE",
+        "native": "ワンピース"
+      },
+      "synonyms": ["OP"],
+      "episodes": null,
+      "status": "RELEASING",
+      "coverImage": { "large": "https://s4.anilist.co/file/cover/bx21.jpg" },
+      "siteUrl": "https://anilist.co/anime/21",
+      "airingSchedule": {
+        "nodes": [
+          { "episode": 1117, "airingAt": 1743753600 }
+        ]
+      },
+      "nextAiringEpisode": { "episode": 1118, "airingAt": 1744358400 }
+    }
+  }
+}

@@ -1,0 +1,44 @@
+{
+  "data": {
+    "Page": {
+      "pageInfo": { "hasNextPage": false },
+      "media": [
+        {
+          "id": 177709,
+          "title": {
+            "romaji": "Dungeon ni Deai wo Motomeru no wa Machigatteiru Darou ka V",
+            "english": "Is It Wrong to Try to Pick Up Girls in a Dungeon? V",
+            "native": "ダンジョンに出会いを求めるのは間違っているだろうかV"
+          },
+          "synonyms": ["DanMachi 5"],
+          "episodes": 13,
+          "status": "NOT_YET_RELEASED",
+          "coverImage": { "large": "https://s4.anilist.co/file/cover/bx177709.jpg" },
+          "siteUrl": "https://anilist.co/anime/177709",
+          "airingSchedule": {
+            "nodes": [
+              { "episode": 1, "airingAt": 1744358400 },
+              { "episode": 2, "airingAt": 1744963200 }
+            ]
+          },
+          "nextAiringEpisode": { "episode": 1, "airingAt": 1744358400 }
+        },
+        {
+          "id": 171018,
+          "title": {
+            "romaji": "Shingeki no Kyojin: The Final Season - The Final Chapters Special 2",
+            "english": "Attack on Titan Final Season THE FINAL CHAPTERS Special 2",
+            "native": "進撃の巨人 The Final Season完結編 後編"
+          },
+          "synonyms": ["AoT Final"],
+          "episodes": 1,
+          "status": "FINISHED",
+          "coverImage": { "large": "https://s4.anilist.co/file/cover/bx171018.jpg" },
+          "siteUrl": "https://anilist.co/anime/171018",
+          "airingSchedule": { "nodes": [] },
+          "nextAiringEpisode": null
+        }
+      ]
+    }
+  }
+}

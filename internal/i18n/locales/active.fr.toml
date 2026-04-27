@@ -1,0 +1,11 @@
+[download_start]
+other = "Téléchargement"
+
+[download_complete]
+other = "Terminé"
+
+[disk_space_error]
+other = "Espace disque insuffisant"
+
+[stream_url_line]
+other = "Stream : /stream/{{.Token}}"

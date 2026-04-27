@@ -60,6 +60,8 @@ type Config struct {
 	Match                 MatchConfig         `yaml:"match"`
 	DeleteSupersededAfter Duration            `yaml:"delete_superseded_after"`
 
+	Locale string `yaml:"locale"`
+
 	Env EnvConfig `yaml:"-"`
 }
 
@@ -88,6 +90,9 @@ func Load() (*Config, error) {
 		return nil, fmt.Errorf("decode config yaml: %w", err)
 	}
 
+	if cfg.Locale == "" {
+		cfg.Locale = "en"
+	}
 	cfg.Env = env
 	return &cfg, nil
 }

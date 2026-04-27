@@ -22,6 +22,7 @@ import (
 	"github.com/gradleless/guetteur/internal/config"
 	dbgen "github.com/gradleless/guetteur/internal/db/generated"
 	"github.com/gradleless/guetteur/internal/events"
+	appi18n "github.com/gradleless/guetteur/internal/i18n"
 	"github.com/gradleless/guetteur/internal/notifier"
 	"github.com/gradleless/guetteur/internal/nyaa"
 	torrentclient "github.com/gradleless/guetteur/internal/torrent"
@@ -37,6 +38,7 @@ type Scheduler struct {
 	notifier *notifier.Notifier
 	bus      *events.Bus
 	ctx      context.Context
+	loc      *appi18n.Localizer
 
 	// downloadMu serialises the concurrency-limit check + slot reservation so
 	// two goroutines can't both see "0 active" and both start a download.
@@ -52,6 +54,7 @@ func New(cfg *config.Config, q *dbgen.Queries, al *anilist.Client, tc *torrentcl
 		tc:       tc,
 		notifier: n,
 		bus:      bus,
+		loc:      appi18n.New(cfg.Locale),
 	}
 }
 
@@ -543,7 +546,7 @@ func (s *Scheduler) startDownload(ctx context.Context, infoHash, magnet, storage
 		})
 		if s.cfg.Notifications.OnError {
 			s.notifier.Notify(notifier.Event{
-				Title:   "Download skipped: insufficient disk space",
+				Title:   s.loc.T("disk_space_error"),
 				Message: err.Error(),
 			})
 		}
@@ -606,9 +609,13 @@ func (s *Scheduler) launchDownload(ctx context.Context, infoHash, magnet, storag
 
 	if s.cfg.Notifications.OnDownloadStart {
 		rel, _ := s.q.GetReleaseByInfoHash(ctx, infoHash)
+		streamLine := ""
+		if rel.StreamToken.Valid && rel.StreamToken.String != "" {
+			streamLine = s.loc.Tf("stream_url_line", map[string]any{"Token": rel.StreamToken.String})
+		}
 		s.notifier.Notify(notifier.Event{
 			Title:   seriesTitle(series),
-			Message: fmtNotifBody(rel, series, "Telechargement"),
+			Message: fmtNotifBody(rel, series, s.loc.T("download_start"), streamLine),
 		})
 	}
 
@@ -906,15 +913,15 @@ func (s *Scheduler) sendCompletionNotification(series dbgen.Series, r dbgen.Rele
 	}
 	s.notifier.Notify(notifier.Event{
 		Title:   seriesTitle(series),
-		Message: fmtNotifBody(r, series, "Termine"),
+		Message: fmtNotifBody(r, series, s.loc.T("download_complete"), ""),
 	})
 }
 
 // fmtNotifBody builds a consistent notification body:
 //
 //	S01E04 · SubsPlease · 1080p · <label>
-//	Stream : /stream/<token>        (omitted on completion label)
-func fmtNotifBody(r dbgen.Release, series dbgen.Series, label string) string {
+//	<streamLine>   (empty = omitted)
+func fmtNotifBody(r dbgen.Release, series dbgen.Series, label, streamLine string) string {
 	ep := fmtEpisode(r, series)
 	parts := []string{ep}
 	if r.GroupName.Valid && r.GroupName.String != "" {
@@ -925,8 +932,8 @@ func fmtNotifBody(r dbgen.Release, series dbgen.Series, label string) string {
 	}
 	parts = append(parts, label)
 	line := strings.Join(parts, " · ")
-	if label != "Termine" && r.StreamToken.Valid && r.StreamToken.String != "" {
-		line += "\nStream : /stream/" + r.StreamToken.String
+	if streamLine != "" {
+		line += "\n" + streamLine
 	}
 	return line
 }

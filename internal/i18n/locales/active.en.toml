@@ -1,0 +1,11 @@
+[download_start]
+other = "Downloading"
+
+[download_complete]
+other = "Completed"
+
+[disk_space_error]
+other = "Insufficient disk space"
+
+[stream_url_line]
+other = "Stream: /stream/{{.Token}}"

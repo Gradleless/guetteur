@@ -4,6 +4,8 @@
   import * as Card from "$lib/components/ui/card/index.js";
   import { Progress } from "$lib/components/ui/progress/index.js";
   import { Skeleton } from "$lib/components/ui/skeleton/index.js";
+  import * as m from "$lib/paraglide/messages.js";
+  import { getLocale } from "$lib/paraglide/runtime.js";
   import { onEvent } from "$lib/sse.js";
   import type {
     DownloadProgress,
@@ -12,14 +14,13 @@
   } from "$lib/types.js";
   import { ArrowRight, Check, Play } from "@lucide/svelte";
   import { onMount } from "svelte";
+  import { toast } from "svelte-sonner";
 
   let schedule = $state<ScheduleEntry[]>([]);
   let activeDownloads = $state<DownloadState[]>([]);
   let loading = $state(true);
-  let toast = $state("");
 
   onMount(() => {
-    
     (async () => {
       const lastDay = weekDays[6]!;
       const firstDay = weekDays[0]!;
@@ -62,8 +63,6 @@
     };
   });
 
-  
-
   function getWeekDays(): Date[] {
     const today = new Date();
     const monday = new Date(today);
@@ -81,9 +80,19 @@
   let selectedIdx = $state(
     weekDays.findIndex((d) => d.toDateString() === todayStr) ?? 0,
   );
-  const DAY_SHORT = ["Lun", "Mar", "Mer", "Jeu", "Ven", "Sam", "Dim"];
+
+  const DAY_SHORT = Array.from({ length: 7 }, (_, i) => {
+    const d = new Date(2024, 0, 8 + i); // Jan 8 2024 = Monday
+    return new Intl.DateTimeFormat(getLocale(), { weekday: "short" }).format(d);
+  });
 
   const selectedDay = $derived(weekDays[selectedIdx] ?? weekDays[0]!);
+
+  const todayLabel = new Date().toLocaleDateString(getLocale(), {
+    weekday: "long",
+    day: "numeric",
+    month: "long",
+  });
 
   let dayEpisodes = $derived(
     schedule
@@ -104,17 +113,11 @@
   }
 
   function fmtTime(iso: string): string {
-    return new Date(iso).toLocaleTimeString("fr-FR", {
+    return new Date(iso).toLocaleTimeString(getLocale(), {
       hour: "2-digit",
       minute: "2-digit",
     });
   }
-
-  const todayLabel = new Date().toLocaleDateString("fr-FR", {
-    weekday: "long",
-    day: "numeric",
-    month: "long",
-  });
 
   const inProgress = $derived(
     activeDownloads.filter(
@@ -139,29 +142,18 @@
     navigator.clipboard.writeText(
       window.location.origin + (dl.stream_url ?? `/stream/${dl.info_hash}`),
     );
-    toast = "URL copiée !";
-    setTimeout(() => (toast = ""), 2000);
+    toast.success(m.toast_url_copied());
   }
 </script>
-
-<!-- Toast -->
-{#if toast}
-  <div
-    class="fixed bottom-6 left-1/2 -translate-x-1/2 z-50 rounded-lg border border-primary/30 bg-primary/10 px-4 py-2 text-sm text-primary shadow-lg"
-  >
-    {toast}
-  </div>
-{/if}
 
 <div class="flex flex-col h-full page-enter">
   <!-- Header -->
   <div class="shrink-0 border-b border-border px-5 py-3.5">
     <p class="font-display text-lg font-bold leading-none">
-      Tableau de bord
+      {m.nav_dashboard()}
     </p>
     <p class="mt-0.5 text-xs text-muted-foreground">
-      {todayLabel}{#if !loading && dayEpisodes.length > 0}&nbsp;·&nbsp;{dayEpisodes.length}
-        épisode{dayEpisodes.length > 1 ? "s" : ""} aujourd'hui{/if}
+      {todayLabel}{#if !loading && dayEpisodes.length > 0}&nbsp;{m.dashboard_episodes_today({ count: dayEpisodes.length, s: dayEpisodes.length > 1 ? "s" : "" })}{/if}
     </p>
   </div>
 
@@ -227,7 +219,7 @@
         <p
           class="mb-2 text-xs font-bold uppercase tracking-[0.9px] text-muted-foreground"
         >
-          {selectedDay.toLocaleDateString("fr-FR", {
+          {selectedDay.toLocaleDateString(getLocale(), {
             weekday: "long",
             day: "numeric",
             month: "long",
@@ -240,11 +232,11 @@
               class="flex flex-col items-center gap-2 p-0 text-center"
             >
               <p class="text-sm text-muted-foreground">
-                Aucun épisode ce jour-là.
+                {m.dashboard_no_episodes()}
               </p>
               {#if schedule.length === 0}
                 <Button variant="link" size="sm" href="/seasonal" class="gap-1">
-                  Suivre des séries <ArrowRight size={13} />
+                  {m.btn_follow_series()} <ArrowRight size={13} />
                 </Button>
               {/if}
             </Card.Content>
@@ -282,7 +274,7 @@
                       {ep.title}
                     </a>
                     <p class="text-xs text-muted-foreground">
-                      Épisode {ep.episode} · {fmtTime(ep.airing_at)}
+                      {m.lbl_episode_n({ n: ep.episode })} · {fmtTime(ep.airing_at)}
                     </p>
                     {#if isDL}
                       <Progress
@@ -297,7 +289,7 @@
                         )
                           ? " · " + fmtSpeed(dl.speed_bps)
                           : ""}
-                        · ETA en cours…
+                        {m.eta_in_progress()}
                       </p>
                     {/if}
                   </div>
@@ -311,12 +303,7 @@
                         class="inline-flex items-center h-7 px-2.5 rounded-md text-xs font-medium no-underline transition-opacity hover:opacity-80"
                         style="background: var(--green-lo); border: 1px solid var(--green-lo); color: var(--green)"
                       >
-                        <Play
-                          size={11}
-                          class="shrink-0"
-                          fill="currentColor"
-                          strokeWidth={0}
-                        /> VLC
+                        <Play size={11} class="shrink-0" fill="currentColor" strokeWidth={0} /> VLC
                       </a>
                       <button
                         onclick={() => copyURL(dl)}
@@ -325,8 +312,7 @@
                       >
                         URL
                       </button>
-                      <Badge
-                        class="bg-emerald-500/10 text-emerald-400 border-transparent shrink-0"
+                      <Badge class="bg-emerald-500/10 text-emerald-400 border-transparent shrink-0"
                         ><Check size={11} /></Badge
                       >
                     {:else if isDL}
@@ -335,18 +321,12 @@
                         class="inline-flex items-center gap-1 h-7 px-2.5 rounded-md text-xs font-medium transition-opacity hover:opacity-80"
                         style="background: var(--violet-lo); border: 1px solid var(--violet-mid); color: var(--color-primary)"
                       >
-                        <Play
-                          size={11}
-                          class="shrink-0"
-                          fill="currentColor"
-                          strokeWidth={0}
-                        /> Stream
+                        <Play size={11} class="shrink-0" fill="currentColor" strokeWidth={0} /> Stream
                       </button>
                       <Badge class="shrink-0"
                         >{((dl.progress ?? 0) * 100).toFixed(0)}%</Badge
                       >
                     {:else}
-                      <!-- "soon": just show the time, no action buttons -->
                       <span
                         class="text-xs px-2.5 py-1 rounded-md"
                         style="background: oklch(1 0 0 / 5%); color: var(--color-muted-foreground)"
@@ -369,14 +349,14 @@
             <p
               class="text-xs font-bold uppercase tracking-[0.9px] text-muted-foreground"
             >
-              Téléchargements actifs
+              {m.dashboard_active_downloads()}
             </p>
             <Button
               variant="link"
               size="sm"
               href="/downloads"
               class="h-auto p-0 text-xs gap-0.5"
-              >Tout voir <ArrowRight size={12} /></Button
+              >{m.btn_see_all()} <ArrowRight size={12} /></Button
             >
           </div>
           <Card.Root class="gap-0 py-0 overflow-hidden">
@@ -389,7 +369,7 @@
                     </p>
                     {#if dl.status === "queued"}
                       <Badge variant="secondary" class="shrink-0"
-                        >En attente</Badge
+                        >{m.status_queued_badge()}</Badge
                       >
                     {:else if dl.status === "downloading"}
                       <span

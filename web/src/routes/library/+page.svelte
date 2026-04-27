@@ -9,12 +9,12 @@
     TabsList,
     TabsTrigger,
   } from "$lib/components/ui/tabs/index.js";
+  import * as m from "$lib/paraglide/messages.js";
   import type { Series } from "$lib/types.js";
   import { ArrowRight } from "@lucide/svelte";
   import { onMount } from "svelte";
   import { flip } from "svelte/animate";
 
-  
   interface LibrarySeries extends Series {
     downloaded_episodes?: number;
     next_airing?: { episode: number; airing_at: string };
@@ -52,19 +52,19 @@
   <div class="shrink-0 border-b border-border px-5 py-3.5 space-y-2.5">
     <div class="flex items-center gap-3">
       <p class="font-display text-lg font-bold leading-none flex-1">
-        Bibliothèque
+        {m.nav_library()}
       </p>
       {#if !loading}
         <p class="text-xs text-muted-foreground">
-          {series.length} série{series.length > 1 ? "s" : ""}
+          {m.library_count({ count: series.length, s: series.length > 1 ? "s" : "" })}
         </p>
       {/if}
     </div>
     <Tabs bind:value={filter}>
       <TabsList variant="line">
-        <TabsTrigger value="active">Suivis</TabsTrigger>
-        <TabsTrigger value="archived">Archivés</TabsTrigger>
-        <TabsTrigger value="all">Tout</TabsTrigger>
+        <TabsTrigger value="active">{m.lbl_followed()}</TabsTrigger>
+        <TabsTrigger value="archived">{m.lbl_archived()}</TabsTrigger>
+        <TabsTrigger value="all">{m.lbl_all()}</TabsTrigger>
       </TabsList>
     </Tabs>
   </div>
@@ -86,13 +86,13 @@
     {:else if series.length === 0}
       <div class="flex h-40 items-center justify-center">
         <p class="text-sm text-muted-foreground">
-          Aucune série ici.
+          {m.library_empty()}
           <Button
             variant="link"
             size="sm"
             href="/seasonal"
             class="p-0 h-auto gap-1"
-            >Suivre des séries <ArrowRight size={13} /></Button
+            >{m.btn_follow_series()} <ArrowRight size={13} /></Button
           >
         </p>
       </div>
@@ -100,7 +100,7 @@
       <ul
         class="grid gap-3 grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6"
       >
-        {#each series as s, index (s.id)}
+        {#each series as s (s.id)}
           <li animate:flip>
             <a href="/series/{s.id}" class="block h-full no-underline">
               <Card.Root
@@ -124,10 +124,9 @@
                   {/if}
                   {#if s.follow_state === 2}
                     <span class="absolute right-2 top-2"
-                      ><Badge variant="secondary">Archivé</Badge></span
+                      ><Badge variant="secondary">{m.lbl_archived()}</Badge></span
                     >
                   {/if}
-                  <!-- Gradient overlay for progress -->
                   <div
                     class="absolute bottom-0 left-0 right-0 h-8 bg-gradient-to-t from-card to-transparent"
                   ></div>
@@ -149,9 +148,9 @@
                   </p>
                   <p class="mt-1 text-xs text-muted-foreground">
                     {#if s.next_airing}
-                      Ép. {s.next_airing.episode} à venir
+                      {m.ep_coming({ ep: s.next_airing.episode })}
                     {:else if s.total_episodes}
-                      {s.total_episodes} éps
+                      {m.lbl_episodes_short({ n: s.total_episodes })}
                     {/if}
                   </p>
                 </div>

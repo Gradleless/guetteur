@@ -9,12 +9,13 @@
     TabsList,
     TabsTrigger,
   } from "$lib/components/ui/tabs/index.js";
+  import * as m from "$lib/paraglide/messages.js";
+  import { getLocale } from "$lib/paraglide/runtime.js";
   import type { FollowState, Series } from "$lib/types.js";
   import { Eye, Lock } from "@lucide/svelte";
   import { onMount } from "svelte";
   import { flip } from "svelte/animate";
 
-  
   interface SeasonalSeries extends Series {
     is_adult?: boolean;
     next_airing?: { episode: number; airing_at: string };
@@ -73,7 +74,7 @@
   }
 
   function fmtDate(iso: string): string {
-    return new Date(iso).toLocaleDateString("fr-FR", {
+    return new Date(iso).toLocaleDateString(getLocale(), {
       day: "numeric",
       month: "short",
     });
@@ -91,12 +92,11 @@
   <div class="shrink-0 border-b border-border px-5 py-3.5 space-y-2.5">
     <div class="flex items-center gap-3">
       <p class="font-display text-lg font-bold leading-none flex-1">
-        Saison en cours
+        {m.nav_seasonal()}
       </p>
       {#if !loading}
         <p class="text-xs text-muted-foreground">
-          {series.filter((s) => s.follow_state === 1).length} suivis · {series.length}
-          au catalogue
+          {m.seasonal_stats({ followed: series.filter((s) => s.follow_state === 1).length, total: series.length })}
         </p>
       {/if}
     </div>
@@ -105,9 +105,9 @@
     <div class="flex flex-wrap items-center gap-3">
       <Tabs bind:value={filterFollow}>
         <TabsList variant="line">
-          <TabsTrigger value="all">Tout</TabsTrigger>
-          <TabsTrigger value="active">Suivis</TabsTrigger>
-          <TabsTrigger value="ignored">Non suivis</TabsTrigger>
+          <TabsTrigger value="all">{m.lbl_all()}</TabsTrigger>
+          <TabsTrigger value="active">{m.lbl_followed()}</TabsTrigger>
+          <TabsTrigger value="ignored">{m.lbl_ignored()}</TabsTrigger>
         </TabsList>
       </Tabs>
 
@@ -115,21 +115,21 @@
         variant={showNsfw ? "default" : "outline"}
         size="sm"
         onclick={() => (showNsfw = !showNsfw)}
-        title={showNsfw
-          ? "Masquer le contenu adulte"
-          : "Afficher le contenu adulte"}
-        >{#if showNsfw}<Eye size={14} class="mr-1" />Visible{:else}<Lock
-            size={14}
-            class="mr-1"
-          />Flou{/if}</Button
+        title={showNsfw ? m.seasonal_nsfw_hide() : m.seasonal_nsfw_show()}
       >
+        {#if showNsfw}
+          <Eye size={14} class="mr-1" />{m.seasonal_nsfw_visible()}
+        {:else}
+          <Lock size={14} class="mr-1" />{m.seasonal_nsfw_blur()}
+        {/if}
+      </Button>
     </div>
 
     <!-- Search + genre -->
     <div class="flex flex-wrap gap-2">
       <Input
         bind:value={search}
-        placeholder="Rechercher un anime…"
+        placeholder={m.seasonal_search_placeholder()}
         class="h-8 flex-1 min-w-48 text-sm"
       />
       {#if allGenres.length > 0}
@@ -137,7 +137,7 @@
           bind:value={selectedGenre}
           class="h-8 rounded-md border border-border bg-background px-2.5 text-sm text-foreground outline-none focus:ring-2 focus:ring-ring"
         >
-          <option value="">Tous les genres</option>
+          <option value="">{m.seasonal_all_genres()}</option>
           {#each allGenres as g}
             <option value={g}>{g}</option>
           {/each}
@@ -162,13 +162,13 @@
       </div>
     {:else if displayed.length === 0}
       <div class="flex h-40 items-center justify-center">
-        <p class="text-sm text-muted-foreground">Aucune série trouvée.</p>
+        <p class="text-sm text-muted-foreground">{m.seasonal_not_found()}</p>
       </div>
     {:else}
       <ul
         class="grid gap-3 grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6"
       >
-        {#each displayed as s, index (s.id)}
+        {#each displayed as s (s.id)}
           {@const blurred = isBlurred(s)}
           <li animate:flip={{ duration: 300 }}>
             <Card.Root
@@ -181,9 +181,7 @@
                     <img
                       src={s.cover_url}
                       alt={blurred ? "" : title(s)}
-                      class="h-full w-full object-cover transition-[filter] {blurred
-                        ? 'blur-xl'
-                        : ''}"
+                      class="h-full w-full object-cover transition-[filter] {blurred ? 'blur-xl' : ''}"
                       loading="lazy"
                     />
                   {:else}
@@ -194,16 +192,12 @@
                     </div>
                   {/if}
                   {#if blurred}
-                    <div
-                      class="absolute inset-0 flex items-center justify-center"
-                    >
+                    <div class="absolute inset-0 flex items-center justify-center">
                       <Lock size={28} class="select-none opacity-80" />
                     </div>
                   {/if}
                   {#if s.follow_state === 1}
-                    <span class="absolute right-2 top-2"
-                      ><Badge>Suivi</Badge></span
-                    >
+                    <span class="absolute right-2 top-2"><Badge>{m.badge_followed()}</Badge></span>
                   {/if}
                 </div>
 
@@ -216,13 +210,11 @@
                   </p>
                   {#if s.next_airing}
                     <p class="mb-2 text-xs text-muted-foreground">
-                      Ép. {s.next_airing.episode} · {fmtDate(
-                        s.next_airing.airing_at,
-                      )}
+                      {m.next_episode({ ep: s.next_airing.episode, date: fmtDate(s.next_airing.airing_at) })}
                     </p>
                   {:else if s.total_episodes}
                     <p class="mb-2 text-xs text-muted-foreground">
-                      {s.total_episodes} éps
+                      {m.lbl_episodes_short({ n: s.total_episodes })}
                     </p>
                   {:else}
                     <div class="flex-1"></div>
@@ -235,7 +227,7 @@
                         class="w-full text-xs h-7"
                         onclick={() => setFollow(s.id, 0)}
                       >
-                        Ne plus suivre
+                        {m.btn_unfollow()}
                       </Button>
                     {:else}
                       <Button
@@ -243,7 +235,7 @@
                         class="w-full text-xs h-7"
                         onclick={() => setFollow(s.id, 1)}
                       >
-                        Suivre
+                        {m.btn_follow()}
                       </Button>
                     {/if}
                   </div>

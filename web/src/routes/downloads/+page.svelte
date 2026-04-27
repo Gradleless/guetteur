@@ -8,9 +8,10 @@
 	import { Progress } from '$lib/components/ui/progress/index.js';
 	import { Skeleton } from '$lib/components/ui/skeleton/index.js';
 	import { Tabs, TabsList, TabsTrigger } from '$lib/components/ui/tabs/index.js';
+	import * as m from '$lib/paraglide/messages.js';
 	import { Play, ArrowDown, Check, LoaderCircle, X } from '@lucide/svelte';
+	import { toast } from 'svelte-sonner';
 
-	
 	interface DownloadItem extends DownloadState {
 		cover_url?: string;
 		size_bytes?: number;
@@ -20,7 +21,6 @@
 	let downloads = $state<DownloadItem[]>([]);
 	let loading   = $state(true);
 	let filter    = $state('active');
-	let toast     = $state('');
 
 	async function reload(): Promise<void> {
 		loading = true;
@@ -66,24 +66,16 @@
 
 	function copyStream(dl: DownloadItem): void {
 		navigator.clipboard.writeText(window.location.origin + (dl.stream_url ?? `/stream/${dl.info_hash}`));
-		toast = 'URL copiée !';
-		setTimeout(() => toast = '', 2000);
+		toast.success(m.toast_url_copied());
 	}
 </script>
-
-<!-- Toast -->
-{#if toast}
-	<div class="fixed bottom-6 left-1/2 -translate-x-1/2 z-50 rounded-lg border border-primary/30 bg-primary/10 px-4 py-2 text-sm text-primary shadow-lg">
-		{toast}
-	</div>
-{/if}
 
 <div class="flex flex-col h-full page-enter">
 
 	<!-- Header -->
 	<div class="shrink-0 border-b border-border px-5 py-3.5 space-y-2.5">
 		<div class="flex items-center gap-3">
-			<p class="font-display text-lg font-bold leading-none flex-1">Téléchargements</p>
+			<p class="font-display text-lg font-bold leading-none flex-1">{m.nav_downloads()}</p>
 			{#if activeCount > 0}
 				<div class="flex items-center gap-2.5 text-xs text-muted-foreground">
 					{#if fmtSpeed(totalSpeedBps)}
@@ -92,19 +84,19 @@
 						</span>
 						<span class="h-3 w-px bg-border"></span>
 					{/if}
-					<span>{activeCount} actif{activeCount > 1 ? 's' : ''}</span>
+					<span>{m.dl_active_badge({ count: activeCount, s: activeCount > 1 ? 's' : '' })}</span>
 					{#if queuedCount > 0}
-						<span>· {queuedCount} en attente</span>
+						<span>{m.dl_queued_badge({ count: queuedCount })}</span>
 					{/if}
 				</div>
 			{/if}
 		</div>
 		<Tabs bind:value={filter}>
 			<TabsList variant="line">
-				<TabsTrigger value="active">Actifs</TabsTrigger>
-				<TabsTrigger value="completed">Terminés</TabsTrigger>
-				<TabsTrigger value="failed">Échecs</TabsTrigger>
-				<TabsTrigger value="all">Tout</TabsTrigger>
+				<TabsTrigger value="active">{m.tab_active()}</TabsTrigger>
+				<TabsTrigger value="completed">{m.tab_completed()}</TabsTrigger>
+				<TabsTrigger value="failed">{m.tab_failed()}</TabsTrigger>
+				<TabsTrigger value="all">{m.lbl_all()}</TabsTrigger>
 			</TabsList>
 		</Tabs>
 	</div>
@@ -118,7 +110,7 @@
 			{/each}
 		{:else if downloads.length === 0}
 			<div class="flex flex-1 items-center justify-center py-20">
-				<p class="text-sm text-muted-foreground">Aucun téléchargement.</p>
+				<p class="text-sm text-muted-foreground">{m.dl_empty()}</p>
 			</div>
 		{:else}
 			{#each downloads as dl}
@@ -147,12 +139,12 @@
 							</p>
 						{:else if dl.status === 'completed'}
 							<p class="text-xs" style="color: var(--green)">
-								Terminé · Stream HTTP disponible{fmtBytes(dl.size_bytes) ? ' · ' + fmtBytes(dl.size_bytes) : ''}
+								{m.dl_status_completed()}{fmtBytes(dl.size_bytes) ? ' · ' + fmtBytes(dl.size_bytes) : ''}
 							</p>
 						{:else if dl.status === 'queued'}
-							<p class="text-xs text-muted-foreground">En file d'attente{fmtBytes(dl.size_bytes) ? ' · ' + fmtBytes(dl.size_bytes) : ''}</p>
+							<p class="text-xs text-muted-foreground">{m.dl_status_queued_text()}{fmtBytes(dl.size_bytes) ? ' · ' + fmtBytes(dl.size_bytes) : ''}</p>
 						{:else if dl.status === 'failed'}
-							<p class="text-xs text-destructive">Échec du téléchargement</p>
+							<p class="text-xs text-destructive">{m.dl_status_failed_text()}</p>
 						{/if}
 					</div>
 
@@ -167,7 +159,7 @@
 							<button onclick={() => copyStream(dl)}
 								class="inline-flex items-center h-7 px-2.5 rounded-md text-xs font-medium transition-opacity hover:opacity-80"
 								style="background: var(--card2); border: 1px solid var(--border); color: var(--color-muted-foreground)">
-								Copier URL
+								{m.btn_copy_url()}
 							</button>
 						{:else if dl.status === 'downloading' && dl.stream_url}
 							<button onclick={() => copyStream(dl)}

@@ -1,11 +1,17 @@
 <script lang="ts">
-  import { page } from "$app/stores";
+  import { page } from "$app/state";
+  import LanguageSelector from "$lib/components/language-selector.svelte";
+  import { Toaster } from "$lib/components/ui/sonner/index.js";
+  import * as m from "$lib/paraglide/messages.js";
   import { onEvent, startSSE } from "$lib/sse.js";
   import type {
     DownloadProgress,
     DownloadState,
+    DownloadStatusChanged,
     HealthResponse,
+    ReleaseDetected,
   } from "$lib/types.js";
+  import { toast } from "svelte-sonner";
   import {
     CalendarDays,
     Download,
@@ -18,7 +24,6 @@
   import "./layout.css";
 
   let { children } = $props();
-
   let activeDownloads = $state<DownloadState[]>([]);
   let vpnIP = $state<string | null>(null);
   let vpnLoaded = $state(false);
@@ -50,13 +55,47 @@
         );
       },
     );
-    const unsubStatus = onEvent("download_status_changed", async () => {
+
+    const unsubStatus = onEvent("download_status_changed", async (raw) => {
+      const d = raw as DownloadStatusChanged;
+      const snap = activeDownloads.find((dl) => dl.info_hash === d.info_hash);
+
       const r = await fetch("/api/downloads?status=active");
       if (r.ok) activeDownloads = await r.json();
+
+      const fresh = activeDownloads.find((dl) => dl.info_hash === d.info_hash);
+      const title =
+        fresh?.series_title ?? fresh?.raw_title ??
+        snap?.series_title ?? snap?.raw_title ??
+        d.info_hash.substring(0, 8);
+
+      if (d.status === "downloading") {
+        toast.loading(title, { id: d.info_hash, description: m.toast_download_started() });
+      } else if (d.status === "completed") {
+        const streamUrl = snap?.stream_url ?? fresh?.stream_url;
+        toast.success(title, {
+          id: d.info_hash,
+          description: m.toast_stream_ready(),
+          duration: 15_000,
+          action: streamUrl
+            ? { label: m.toast_open_vlc(), onClick: () => window.open(`vlc:${streamUrl}`, "_blank") }
+            : undefined,
+        });
+      } else if (d.status === "failed") {
+        toast.error(title, { id: d.info_hash, description: m.dl_status_failed_text() });
+      }
     });
+
+    const unsubRelease = onEvent("release_detected", (raw) => {
+      const d = raw as ReleaseDetected;
+      const label = d.raw_title.split("[")[0]?.trim() ?? d.raw_title;
+      toast.info(label, { description: m.toast_release_detected() });
+    });
+
     return () => {
       unsubProgress();
       unsubStatus();
+      unsubRelease();
     };
   });
 
@@ -74,34 +113,34 @@
     return bps + " B/s";
   }
 
-  const NAV: Array<{
-    href: string;
-    label: string;
-    icon: Component;
-    grp: "Contenu" | "Système";
-  }> = [
-    { href: "/", label: "Tableau de bord", icon: Home, grp: "Contenu" },
-    {
-      href: "/seasonal",
-      label: "Saison en cours",
-      icon: CalendarDays,
-      grp: "Contenu",
-    },
-    { href: "/library", label: "Bibliothèque", icon: Library, grp: "Contenu" },
-    {
-      href: "/downloads",
-      label: "Téléchargements",
-      icon: Download,
-      grp: "Système",
-    },
-    { href: "/settings", label: "Réglages", icon: Settings, grp: "Système" },
+  type NavGroup = "content" | "system";
+
+  const NAV: Array<{ href: string; icon: Component; grp: NavGroup }> = [
+    { href: "/", icon: Home, grp: "content" },
+    { href: "/seasonal", icon: CalendarDays, grp: "content" },
+    { href: "/library", icon: Library, grp: "content" },
+    { href: "/downloads", icon: Download, grp: "system" },
+    { href: "/settings", icon: Settings, grp: "system" },
   ];
 
-  const groups = ["Contenu", "Système"] as const;
+  const groups: NavGroup[] = ["content", "system"];
+
+  function navLabel(href: string): string {
+    if (href === "/") return m.nav_dashboard();
+    if (href === "/seasonal") return m.nav_seasonal();
+    if (href === "/library") return m.nav_library();
+    if (href === "/downloads") return m.nav_downloads();
+    if (href === "/settings") return m.nav_settings();
+    return href;
+  }
+
+  function groupLabel(grp: NavGroup): string {
+    return grp === "content" ? m.nav_group_content() : m.nav_group_system();
+  }
 
   function isActive(href: string): boolean {
-    if (href === "/") return $page.url.pathname === "/";
-    return $page.url.pathname.startsWith(href);
+    if (href === "/") return page.url.pathname === "/";
+    return page.url.pathname.startsWith(href);
   }
 </script>
 
@@ -127,8 +166,8 @@
         <path
           d="M1.5 8C3 4.5 5.5 2.5 8 2.5S13 4.5 14.5 8C13 11.5 10.5 13.5 8 13.5S3 11.5 1.5 8z"
           stroke-width="1.25"
-        />
-        <circle cx="8" cy="8" r="2.2" stroke-width="1.25" />
+        ></path>
+        <circle cx="8" cy="8" r="2.2" stroke-width="1.25"></circle>
       </svg>
       <span
         class="font-display text-base font-bold tracking-tight text-foreground"
@@ -144,8 +183,9 @@
             class="mb-1 px-2.5 text-xs font-bold uppercase tracking-[1.1px]"
             style="color: var(--dim)"
           >
-            {grp}
+            {groupLabel(grp)}
           </p>
+
           {#each NAV.filter((n) => n.grp === grp) as link}
             {@const active = isActive(link.href)}
             <a
@@ -172,7 +212,7 @@
                   ? "text-primary shrink-0"
                   : "text-muted-foreground shrink-0"}
               />
-              {link.label}
+              {navLabel(link.href)}
             </a>
           {/each}
         </div>
@@ -189,9 +229,10 @@
           <div class="mb-1.5 flex items-center gap-1.5">
             <span class="h-1.5 w-1.5 shrink-0 rounded-full bg-primary dot-pulse"
             ></span>
-            <span class="flex-1 truncate text-xs font-medium text-primary">
-              {currentDL.raw_title?.split("[")[0]?.trim() ?? "Téléchargement…"}
-            </span>
+            <span class="flex-1 truncate text-xs font-medium text-primary"
+              >{currentDL.raw_title?.split("[")[0]?.trim() ??
+                m.dl_strip_default()}</span
+            >
           </div>
           <div
             class="relative h-[2.5px] overflow-hidden rounded-full"
@@ -213,7 +254,7 @@
       </div>
     {/if}
 
-    <!-- Footer: VPN + DL count -->
+    <!-- Footer: VPN + DL count + language selector -->
     <div
       class="shrink-0 border-t border-border px-3.5 py-2.5 flex flex-col gap-1.5"
     >
@@ -221,38 +262,44 @@
         {#if !vpnLoaded}
           <span class="h-1.5 w-1.5 shrink-0 rounded-full bg-muted-foreground"
           ></span>
-          <span class="text-xs text-muted-foreground">VPN…</span>
+          <span class="text-xs text-muted-foreground">{m.vpn_loading()}</span>
         {:else if vpnIP}
           <span
             class="h-1.5 w-1.5 shrink-0 rounded-full dot-pulse"
             style="background: var(--green)"
           ></span>
           <span class="text-xs text-muted-foreground"
-            >VPN actif · {vpnIP}</span
+            >{m.vpn_active({ ip: vpnIP })}</span
           >
         {:else}
           <span class="h-1.5 w-1.5 shrink-0 rounded-full bg-destructive"></span>
-          <span class="text-xs text-destructive">Tunnel VPN inactif</span>
+          <span class="text-xs text-destructive">{m.vpn_inactive()}</span>
         {/if}
       </div>
+
       {#if dlCount > 0}
         <div class="flex items-center gap-1.5">
           <span class="h-1.5 w-1.5 shrink-0 rounded-full bg-primary"></span>
-          <span class="text-xs text-muted-foreground">
-            {dlCount} téléchargement{dlCount > 1 ? "s" : ""} actif{dlCount > 1
-              ? "s"
-              : ""}
-          </span>
+          <span class="text-xs text-muted-foreground"
+            >{m.dl_active_count({
+              count: dlCount,
+              s: dlCount > 1 ? "s" : "",
+            })}</span
+          >
         </div>
       {/if}
+
+      <div class="pt-0.5">
+        <LanguageSelector />
+      </div>
     </div>
   </aside>
 
   <!-- ── Main content ── -->
-  <div class="flex flex-1 flex-col overflow-hidden">
-    {@render children()}
-  </div>
+  <div class="flex flex-1 flex-col overflow-hidden">{@render children()}</div>
 </div>
+
+<Toaster position="bottom-right" richColors />
 
 <!-- ── Bottom nav (mobile) ── -->
 <nav
@@ -265,7 +312,7 @@
 				{isActive(link.href) ? 'text-primary' : 'text-muted-foreground'}"
     >
       <link.icon size={16} strokeWidth={1.5} />
-      {link.label.split(" ")[0]}
+      {navLabel(link.href).split(" ")[0]}
     </a>
   {/each}
 </nav>

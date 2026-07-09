@@ -3,6 +3,8 @@ export type DownloadStatus =
   | "downloading"
   | "completed"
   | "failed"
+  | "deleted"
+  | "skipped"
   | "superseded";
 
 export type AniListStatus =

@@ -12,6 +12,10 @@ COPY go.mod go.sum* ./
 RUN go mod download
 COPY . .
 
+# sqlc output (internal/db/generated) is gitignored — generate it at build time
+# so the image builds from a clean checkout without any pre-generated files.
+RUN go run github.com/sqlc-dev/sqlc/cmd/sqlc@v1.30.0 generate -f internal/db/sqlc.yaml
+
 COPY --from=web-build /web/build ./internal/ui/dist
 RUN CGO_ENABLED=0 go build -ldflags="-s -w" -o /guetteur ./cmd/guetteur
 

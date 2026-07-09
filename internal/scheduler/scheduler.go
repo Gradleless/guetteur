@@ -141,6 +141,12 @@ func (s *Scheduler) Start(ctx context.Context) error {
 		return fmt.Errorf("register vpn ip job: %w", err)
 	}
 
+	if _, err := s.cron.AddFunc("@every 10m", func() {
+		s.scanMissingFiles(context.Background())
+	}); err != nil {
+		return fmt.Errorf("register missing files scan job: %w", err)
+	}
+
 	s.ctx = ctx
 	s.cron.Start()
 	slog.Info("scheduler started",
@@ -151,6 +157,7 @@ func (s *Scheduler) Start(ctx context.Context) error {
 	go s.refreshAniList(ctx)
 	go s.resumeDownloading(ctx)
 	go s.refreshVpnIP(ctx)
+	go s.scanMissingFiles(ctx)
 
 	go func() {
 		<-ctx.Done()
@@ -322,7 +329,7 @@ func (s *Scheduler) pollSeriesNyaa(ctx context.Context, series dbgen.Series) {
 		if r.Episode.Valid {
 			ep := int(r.Episode.Int64)
 			switch r.Status {
-			case "queued", "downloading", "completed":
+			case "queued", "downloading", "completed", "deleted":
 				existingEpisodes[ep] = r.Status
 			}
 		}
@@ -427,17 +434,20 @@ qualityLoop:
 }
 
 func (s *Scheduler) computeStorageDir(series dbgen.Series, result nyaa.FilterResult) string {
-	season := 1
-	if series.SeasonNumber.Valid {
-		season = int(series.SeasonNumber.Int64)
-	}
-	episode := 0
+	episode, episodeEnd := 0, 0
 	if result.Parsed.Episode != nil {
 		episode = *result.Parsed.Episode
 	}
-	episodeEnd := 0
 	if result.Parsed.EpisodeEnd != nil {
 		episodeEnd = *result.Parsed.EpisodeEnd
+	}
+	return s.storageDirFor(series, episode, episodeEnd, result.Parsed.Group, result.Parsed.Resolution)
+}
+
+func (s *Scheduler) storageDirFor(series dbgen.Series, episode, episodeEnd int, group, resolution string) string {
+	season := 1
+	if series.SeasonNumber.Valid {
+		season = int(series.SeasonNumber.Int64)
 	}
 
 	data := tpl.Data{
@@ -446,8 +456,8 @@ func (s *Scheduler) computeStorageDir(series dbgen.Series, result nyaa.FilterRes
 		Season:       season,
 		Episode:      episode,
 		EpisodeEnd:   episodeEnd,
-		Group:        result.Parsed.Group,
-		Resolution:   result.Parsed.Resolution,
+		Group:        group,
+		Resolution:   resolution,
 		TmdbID:       series.TmdbID.Int64,
 	}
 
@@ -477,7 +487,7 @@ func (s *Scheduler) supersedeSingleEpisodes(ctx context.Context, seriesID int64,
 		if ep < epStart || ep > epEnd {
 			continue
 		}
-		if r.Status == "superseded" || r.Status == "skipped" {
+		if r.Status == "superseded" || r.Status == "skipped" || r.Status == "deleted" {
 			continue
 		}
 		if err := s.q.UpdateReleaseStatus(ctx, dbgen.UpdateReleaseStatusParams{

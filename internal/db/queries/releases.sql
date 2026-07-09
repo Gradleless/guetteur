@@ -36,6 +36,14 @@ UPDATE releases SET download_path = ? WHERE info_hash = ?;
 -- name: UpdateReleaseMediaPath :exec
 UPDATE releases SET media_path = ?, status = 'completed' WHERE info_hash = ?;
 
+-- name: UpdateReleaseForRedownload :exec
+UPDATE releases
+SET status = 'queued', progress = 0, media_path = NULL, error_msg = NULL
+WHERE info_hash = ?;
+
+-- name: DeleteReleasesBySeriesID :exec
+DELETE FROM releases WHERE series_id = ?;
+
 -- name: ListReleasesWithSeriesByStatus :many
 SELECT r.info_hash, r.series_id, r.raw_title, r.episode, r.episode_end,
        r.group_name, r.resolution, r.magnet, r.nyaa_url,

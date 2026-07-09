@@ -50,7 +50,15 @@ func New(cfg *config.Config, db *sql.DB) (*App, error) {
 
 	bus := events.New()
 	sched := scheduler.New(cfg, q, al, tc, n, bus)
-	srv := api.New(cfg, q, tc, al, n, bus, sched.ImportMedia, sched.TriggerPollForSeries)
+	srv := api.New(cfg, q, tc, al, n, bus, api.SchedulerHooks{
+		ImportMedia:              sched.ImportMedia,
+		TriggerSeriesPoll:        sched.TriggerPollForSeries,
+		DeleteRelease:            sched.DeleteRelease,
+		RedownloadRelease:        sched.RedownloadRelease,
+		DeleteSeriesReleases:     sched.DeleteSeriesReleases,
+		RedownloadSeriesReleases: sched.RedownloadSeriesReleases,
+		DeleteSeriesData:         sched.DeleteSeriesData,
+	})
 
 	return &App{
 		cfg:       cfg,

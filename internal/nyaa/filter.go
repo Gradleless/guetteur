@@ -74,18 +74,23 @@ func Filter(in FilterInput) FilterResult {
 		return skip("seeders below minimum")
 	}
 
+	// A known info_hash is never re-queued, except "failed" which is a retry
+	// candidate. This also keeps superseded/skipped/deleted releases from being
+	// restarted on every poll.
 	if status, exists := in.ExistingInfoHashes[in.Release.InfoHash]; exists {
-		if status == "completed" || status == "downloading" {
+		if status != "failed" {
 			return skip("already " + status)
 		}
 	}
 
 	// Episode-level dedup: reject a second variant for the same episode even if
 	// the info_hash differs (e.g. MULTI and VOSTFR releases of the same episode).
+	// "deleted" counts too: a user-removed episode only comes back through an
+	// explicit re-download, not through the next poll.
 	if parsed.Episode != nil && !parsed.IsBatch {
 		if status, exists := in.ExistingEpisodes[*parsed.Episode]; exists {
 			switch status {
-			case "queued", "downloading", "completed":
+			case "queued", "downloading", "completed", "deleted":
 				return skip("episode already " + status)
 			}
 		}

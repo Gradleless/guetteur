@@ -235,6 +235,25 @@ func (c *Client) LargestFilePath(infoHash string) (string, bool) {
 	return filepath.Join(entry.storageDir, largest.Path()), true
 }
 
+// FilePaths returns the absolute on-disk paths of every file in an active
+// torrent. Empty when the torrent is not tracked or has no metadata yet — for
+// completed releases (already dropped) use the media_path stored in the DB.
+func (c *Client) FilePaths(infoHash string) []string {
+	c.mu.RLock()
+	entry, ok := c.torrents[strings.ToLower(infoHash)]
+	c.mu.RUnlock()
+	if !ok || entry.t.Info() == nil {
+		return nil
+	}
+
+	files := entry.t.Files()
+	paths := make([]string, 0, len(files))
+	for _, f := range files {
+		paths = append(paths, filepath.Join(entry.storageDir, f.Path()))
+	}
+	return paths
+}
+
 func (c *Client) NewReader(infoHash string) (io.ReadSeekCloser, int64, string, bool) {
 	c.mu.RLock()
 	entry, ok := c.torrents[strings.ToLower(infoHash)]
@@ -277,8 +296,8 @@ func (c *Client) Watch(ctx context.Context, infoHash string, cb ProgressCallback
 			case <-ticker.C:
 				p := c.Progress(ih)
 				if p < 0 {
-
-					continue
+					// Torrent dropped (deleted or cancelled) — nothing left to watch.
+					return
 				}
 
 				if p-lastProgress >= 0.0005 || p >= 1.0 {

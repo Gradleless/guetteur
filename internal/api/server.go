@@ -22,17 +22,28 @@ import (
 	torrentclient "github.com/gradleless/guetteur/internal/torrent"
 )
 
+// SchedulerHooks are the scheduler operations the HTTP layer can trigger.
+// Nil fields make the matching endpoints answer 503.
+type SchedulerHooks struct {
+	ImportMedia             func(ctx context.Context, m anilist.Media) error
+	TriggerSeriesPoll       func(seriesID int64)
+	DeleteRelease           func(ctx context.Context, infoHash string) error
+	RedownloadRelease       func(ctx context.Context, infoHash string) error
+	DeleteSeriesReleases    func(ctx context.Context, seriesID int64) error
+	RedownloadSeriesReleases func(ctx context.Context, seriesID int64) error
+	DeleteSeriesData        func(ctx context.Context, seriesID int64) error
+}
+
 type Server struct {
-	Router            *chi.Mux
-	q                 *dbgen.Queries
-	cfg               *config.Config
-	tc                *torrentclient.Client
-	al                *anilist.Client
-	notifier          *notifier.Notifier
-	bus               *events.Bus
-	importMedia       func(ctx context.Context, m anilist.Media) error
-	triggerSeriesPoll func(seriesID int64)
-	startAt           time.Time
+	Router   *chi.Mux
+	q        *dbgen.Queries
+	cfg      *config.Config
+	tc       *torrentclient.Client
+	al       *anilist.Client
+	notifier *notifier.Notifier
+	bus      *events.Bus
+	sched    SchedulerHooks
+	startAt  time.Time
 }
 
 func New(
@@ -42,20 +53,18 @@ func New(
 	al *anilist.Client,
 	n *notifier.Notifier,
 	bus *events.Bus,
-	importMedia func(ctx context.Context, m anilist.Media) error,
-	triggerSeriesPoll func(seriesID int64),
+	sched SchedulerHooks,
 ) *Server {
 	s := &Server{
-		Router:            chi.NewRouter(),
-		q:                 q,
-		cfg:               cfg,
-		tc:                tc,
-		al:                al,
-		notifier:          n,
-		bus:               bus,
-		importMedia:       importMedia,
-		triggerSeriesPoll: triggerSeriesPoll,
-		startAt:           time.Now(),
+		Router:   chi.NewRouter(),
+		q:        q,
+		cfg:      cfg,
+		tc:       tc,
+		al:       al,
+		notifier: n,
+		bus:      bus,
+		sched:    sched,
+		startAt:  time.Now(),
 	}
 	s.routes()
 	return s
@@ -80,10 +89,15 @@ func (s *Server) routes() {
 		r.Post("/series/{id}/ignore", s.handleIgnore)
 		r.Post("/series/{id}/archive", s.handleArchive)
 		r.Patch("/series/{id}", s.handlePatchSeries)
+		r.Delete("/series/{id}/releases", s.handleDeleteSeriesReleases)
+		r.Post("/series/{id}/redownload", s.handleRedownloadSeries)
+		r.Delete("/series/{id}/data", s.handleDeleteSeriesData)
 
 		r.Get("/schedule", s.handleSchedule)
 
 		r.Get("/downloads", s.handleListDownloads)
+		r.Delete("/downloads/{infoHash}", s.handleDeleteDownload)
+		r.Post("/downloads/{infoHash}/redownload", s.handleRedownloadDownload)
 
 		r.Get("/anilist/search", s.handleAnilistSearch)
 		r.Post("/anilist/import", s.handleAnilistImport)

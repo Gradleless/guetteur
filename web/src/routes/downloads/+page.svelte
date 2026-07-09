@@ -9,7 +9,7 @@
 	import { Skeleton } from '$lib/components/ui/skeleton/index.js';
 	import { Tabs, TabsList, TabsTrigger } from '$lib/components/ui/tabs/index.js';
 	import * as m from '$lib/paraglide/messages.js';
-	import { Play, ArrowDown, Check, LoaderCircle, X } from '@lucide/svelte';
+	import { Play, ArrowDown, Check, LoaderCircle, X, Trash2, RotateCcw } from '@lucide/svelte';
 	import { toast } from 'svelte-sonner';
 
 	interface DownloadItem extends DownloadState {
@@ -68,6 +68,27 @@
 		navigator.clipboard.writeText(window.location.origin + (dl.stream_url ?? `/stream/${dl.info_hash}`));
 		toast.success(m.toast_url_copied());
 	}
+
+	async function deleteDownload(dl: DownloadItem): Promise<void> {
+		if (!confirm(m.confirm_delete_episode())) return;
+		const res = await fetch(`/api/downloads/${dl.info_hash}`, { method: 'DELETE' });
+		if (res.ok) {
+			toast.success(m.toast_episode_deleted());
+			reload();
+		} else {
+			toast.error(m.toast_action_failed());
+		}
+	}
+
+	async function redownload(dl: DownloadItem): Promise<void> {
+		const res = await fetch(`/api/downloads/${dl.info_hash}/redownload`, { method: 'POST' });
+		if (res.ok) {
+			toast.success(m.toast_redl_started());
+			reload();
+		} else {
+			toast.error(m.toast_action_failed());
+		}
+	}
 </script>
 
 <div class="flex flex-col h-full page-enter">
@@ -96,6 +117,7 @@
 				<TabsTrigger value="active">{m.tab_active()}</TabsTrigger>
 				<TabsTrigger value="completed">{m.tab_completed()}</TabsTrigger>
 				<TabsTrigger value="failed">{m.tab_failed()}</TabsTrigger>
+				<TabsTrigger value="deleted">{m.tab_deleted()}</TabsTrigger>
 				<TabsTrigger value="all">{m.lbl_all()}</TabsTrigger>
 			</TabsList>
 		</Tabs>
@@ -145,6 +167,8 @@
 							<p class="text-xs text-muted-foreground">{m.dl_status_queued_text()}{fmtBytes(dl.size_bytes) ? ' · ' + fmtBytes(dl.size_bytes) : ''}</p>
 						{:else if dl.status === 'failed'}
 							<p class="text-xs text-destructive">{m.dl_status_failed_text()}</p>
+						{:else if dl.status === 'deleted'}
+							<p class="text-xs text-muted-foreground">{m.dl_status_deleted_text()}</p>
 						{/if}
 					</div>
 
@@ -168,12 +192,27 @@
 								<Play size={10} fill="currentColor" strokeWidth={0} /> Stream
 							</button>
 						{/if}
+						{#if dl.status === 'deleted' || dl.status === 'failed'}
+							<button onclick={() => redownload(dl)} title={m.btn_redownload()}
+								class="inline-flex items-center gap-1 h-7 px-2.5 rounded-md text-xs font-medium transition-opacity hover:opacity-80"
+								style="background: var(--card2); border: 1px solid var(--border); color: var(--color-muted-foreground)">
+								<RotateCcw size={11} /> {m.btn_redownload()}
+							</button>
+						{/if}
+						{#if dl.status === 'queued' || dl.status === 'downloading' || dl.status === 'completed' || dl.status === 'failed'}
+							<button onclick={() => deleteDownload(dl)} title={m.btn_delete()}
+								class="inline-flex items-center h-7 w-7 justify-center rounded-md transition-opacity hover:opacity-80"
+								style="background: var(--red-lo); border: 1px solid var(--red-lo); color: var(--red)">
+								<Trash2 size={12} />
+							</button>
+						{/if}
 						<!-- Status dot -->
 						<div class="h-6 w-6 rounded-full flex items-center justify-center shrink-0"
 							style="{dl.status === 'completed'  ? 'background: oklch(0.72 0.14 155 / 18%); color: var(--green)'
 							      : dl.status === 'downloading' ? 'background: var(--violet-lo); color: var(--color-primary)'
 							      : dl.status === 'queued'      ? 'background: oklch(1 0 0 / 7%); color: var(--dim)'
 							      : dl.status === 'failed'      ? 'background: var(--red-lo); color: var(--red)'
+							      : dl.status === 'deleted'     ? 'background: oklch(1 0 0 / 7%); color: var(--dim)'
 							      : 'background: oklch(1 0 0 / 7%); color: var(--dim)'}">
 							{#if dl.status === 'completed'}
 								<Check size={13} strokeWidth={2.5} />
@@ -183,6 +222,8 @@
 								<LoaderCircle size={13} strokeWidth={2} class="animate-spin" />
 							{:else if dl.status === 'failed'}
 								<X size={13} strokeWidth={2.5} />
+							{:else if dl.status === 'deleted'}
+								<Trash2 size={12} strokeWidth={2} />
 							{:else}
 								<span class="text-xs font-bold">?</span>
 							{/if}

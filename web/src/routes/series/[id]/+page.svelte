@@ -23,7 +23,7 @@
     SeriesDetailResponse,
   } from "$lib/types.js";
   import { onMount } from "svelte";
-  import { Check, ExternalLink, Star, LoaderCircle, Play, X } from "@lucide/svelte";
+  import { Check, ExternalLink, Star, LoaderCircle, Play, RotateCcw, Trash2, X } from "@lucide/svelte";
   import { toast } from "svelte-sonner";
 
   let series = $state<Series | null>(null);
@@ -68,16 +68,19 @@
         );
       },
     );
-    const unsubStatus = onEvent("download_status_changed", async () => {
-      const r = await fetch(`/api/series/${id}`);
-      if (r.ok) {
-        const d: SeriesDetailResponse = await r.json();
-        releases = d.recent_releases ?? [];
-        stats = d.stats;
-      }
-    });
+    const unsubStatus = onEvent("download_status_changed", refresh);
     return () => { unsubProgress(); unsubStatus(); };
   });
+
+  async function refresh(): Promise<void> {
+    const r = await fetch(`/api/series/${id}`);
+    if (r.ok) {
+      const d: SeriesDetailResponse = await r.json();
+      series = d.series;
+      releases = d.recent_releases ?? [];
+      stats = d.stats;
+    }
+  }
 
   function title(s: Series | null): string {
     return s?.title_english || s?.title_romaji || "";
@@ -186,6 +189,70 @@
     );
     toast.success(m.toast_url_copied());
   }
+
+  async function deleteRelease(rel: Release): Promise<void> {
+    if (!confirm(m.confirm_delete_episode())) return;
+    const res = await fetch(`/api/downloads/${rel.info_hash}`, { method: "DELETE" });
+    if (res.ok) {
+      toast.success(m.toast_episode_deleted());
+      refresh();
+    } else {
+      toast.error(m.toast_action_failed());
+    }
+  }
+
+  async function redownload(rel: Release): Promise<void> {
+    const res = await fetch(`/api/downloads/${rel.info_hash}/redownload`, { method: "POST" });
+    if (res.ok) {
+      toast.success(m.toast_redl_started());
+      refresh();
+    } else {
+      toast.error(m.toast_action_failed());
+    }
+  }
+
+  async function deleteAllReleases(): Promise<void> {
+    if (!confirm(m.confirm_delete_season())) return;
+    const res = await fetch(`/api/series/${id}/releases`, { method: "DELETE" });
+    if (res.ok) {
+      toast.success(m.toast_season_deleted());
+      refresh();
+    } else {
+      toast.error(m.toast_action_failed());
+    }
+  }
+
+  async function redownloadAll(): Promise<void> {
+    if (!confirm(m.confirm_redl_season())) return;
+    const res = await fetch(`/api/series/${id}/redownload`, { method: "POST" });
+    if (res.ok) {
+      toast.success(m.toast_season_redl());
+      refresh();
+    } else {
+      toast.error(m.toast_action_failed());
+    }
+  }
+
+  let deletingSeries = $state(false);
+  async function deleteSeriesData(): Promise<void> {
+    if (!confirm(m.confirm_delete_series())) return;
+    deletingSeries = true;
+    const res = await fetch(`/api/series/${id}/data`, { method: "DELETE" });
+    if (res.ok) {
+      toast.success(m.toast_series_data_deleted());
+      await refresh();
+    } else {
+      toast.error(m.toast_action_failed());
+    }
+    deletingSeries = false;
+  }
+
+  const hasDownloadedReleases = $derived(
+    releases.some((r) => ["completed", "downloading", "queued", "failed"].includes(r.status)),
+  );
+  const hasRedownloadable = $derived(
+    releases.some((r) => ["deleted", "failed", "completed"].includes(r.status)),
+  );
 
   async function setFollow(state: FollowState): Promise<void> {
     const action = state === 1 ? "follow" : state === 2 ? "archive" : "ignore";
@@ -414,12 +481,33 @@
       <!-- Col 2: Episodes -->
       <ResizablePane defaultSize={56} minSize={30} class="overflow-y-auto">
         <div class="overflow-y-auto h-full px-4 py-3 flex flex-col gap-2 min-w-0">
-          <div class="flex items-baseline gap-2 mb-1">
+          <div class="flex items-center gap-2 mb-1">
             <p class="text-xs font-bold uppercase tracking-[0.9px] text-muted-foreground">{m.section_episodes()}</p>
             {#if series.total_episodes}
               <span class="text-xs text-muted-foreground">
                 {m.episodes_progress({ done: releases.filter((r) => r.status === "completed").length, total: series.total_episodes })}
               </span>
+            {/if}
+            <div class="flex-1"></div>
+            {#if hasRedownloadable}
+              <button
+                onclick={redownloadAll}
+                title={m.btn_redl_season()}
+                class="inline-flex items-center gap-1 h-6 px-2 rounded text-xs font-medium"
+                style="background: var(--card2); border: 1px solid var(--border); color: var(--color-muted-foreground)"
+              >
+                <RotateCcw size={10} /> {m.btn_redl_season()}
+              </button>
+            {/if}
+            {#if hasDownloadedReleases}
+              <button
+                onclick={deleteAllReleases}
+                title={m.btn_delete_season()}
+                class="inline-flex items-center gap-1 h-6 px-2 rounded text-xs font-medium"
+                style="background: var(--red-lo); border: 1px solid var(--red-lo); color: var(--red)"
+              >
+                <Trash2 size={10} /> {m.btn_delete_season()}
+              </button>
             {/if}
           </div>
 
@@ -434,6 +522,7 @@
               {@const active = rel?.status === "downloading"}
               {@const queued = rel?.status === "queued"}
               {@const failed = rel?.status === "failed"}
+              {@const deleted = rel?.status === "deleted"}
               <div
                 class="flex items-center gap-2.5 rounded-lg border px-3 py-2.5 transition-colors hover:bg-accent/30"
                 style={done ? "background: var(--green-lo); border-color: var(--green-lo)" : "border-color: var(--border)"}
@@ -467,10 +556,12 @@
                     <p class="text-xs text-muted-foreground">{m.ep_queued_text()}</p>
                   {:else if failed}
                     <p class="text-xs text-destructive">{m.ep_failed_text()}</p>
+                  {:else if deleted}
+                    <p class="text-xs text-muted-foreground">{m.ep_deleted_text()}</p>
                   {/if}
                 </div>
 
-                {#if done || active}
+                {#if rel}
                   <div class="flex items-center gap-1.5 shrink-0">
                     {#if done}
                       <a
@@ -482,13 +573,35 @@
                         <Play size={11} fill="currentColor" strokeWidth={0} /> VLC
                       </a>
                     {/if}
-                    <button
-                      onclick={() => copyStream(rel)}
-                      class="inline-flex items-center h-7 px-2.5 rounded text-xs font-medium"
-                      style="background: var(--card2); border: 1px solid var(--border); color: var(--color-muted-foreground)"
-                    >
-                      URL
-                    </button>
+                    {#if done || active}
+                      <button
+                        onclick={() => copyStream(rel)}
+                        class="inline-flex items-center h-7 px-2.5 rounded text-xs font-medium"
+                        style="background: var(--card2); border: 1px solid var(--border); color: var(--color-muted-foreground)"
+                      >
+                        URL
+                      </button>
+                    {/if}
+                    {#if deleted || failed}
+                      <button
+                        onclick={() => redownload(rel)}
+                        title={m.btn_redownload()}
+                        class="inline-flex items-center gap-1 h-7 px-2.5 rounded text-xs font-medium"
+                        style="background: var(--card2); border: 1px solid var(--border); color: var(--color-muted-foreground)"
+                      >
+                        <RotateCcw size={11} /> {m.btn_redownload()}
+                      </button>
+                    {/if}
+                    {#if done || active || queued || failed}
+                      <button
+                        onclick={() => deleteRelease(rel)}
+                        title={m.btn_delete()}
+                        class="inline-flex items-center h-7 w-7 justify-center rounded"
+                        style="background: var(--red-lo); border: 1px solid var(--red-lo); color: var(--red)"
+                      >
+                        <Trash2 size={12} />
+                      </button>
+                    {/if}
                   </div>
                 {/if}
               </div>
@@ -573,6 +686,27 @@
               <p class="text-xs break-all leading-relaxed">
                 /media/{title(series).replace(/[<>:"/\\|?*]/g, "").slice(0, 40)}/
               </p>
+            </div>
+          </div>
+
+          <!-- Danger zone -->
+          <div>
+            <p class="mb-1.5 text-xs font-bold uppercase tracking-[0.9px]" style="color: var(--red)">{m.section_danger()}</p>
+            <div class="rounded-lg px-3 py-2.5 flex flex-col gap-2" style="background: var(--card); border: 1px solid var(--red-lo)">
+              <p class="text-xs text-muted-foreground leading-relaxed">{m.danger_series_hint()}</p>
+              <button
+                onclick={deleteSeriesData}
+                disabled={deletingSeries}
+                class="inline-flex items-center justify-center gap-1.5 h-7 px-2.5 rounded text-xs font-medium disabled:opacity-50"
+                style="background: var(--red-lo); border: 1px solid var(--red-lo); color: var(--red)"
+              >
+                {#if deletingSeries}
+                  <LoaderCircle size={12} class="animate-spin" />
+                {:else}
+                  <Trash2 size={12} />
+                {/if}
+                {m.btn_delete_series_data()}
+              </button>
             </div>
           </div>
         </div>

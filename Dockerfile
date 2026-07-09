@@ -1,11 +1,16 @@
-FROM node:20-alpine AS web-build
+# Web assets are platform-independent: build once on the native builder arch
+# (never under QEMU emulation) and reuse for every target platform.
+FROM --platform=$BUILDPLATFORM node:20-alpine AS web-build
 WORKDIR /web
 COPY web/package.json web/package-lock.json* ./
 RUN npm ci || npm install
 COPY web/ ./
 RUN npm run build
 
-FROM golang:1.25-alpine AS go-build
+# Run the Go toolchain natively on the builder arch and cross-compile to the
+# target arch (CGO disabled, so no C toolchain or emulation needed). This keeps
+# the slow steps — npm build, sqlc, go build — off QEMU entirely.
+FROM --platform=$BUILDPLATFORM golang:1.25-alpine AS go-build
 WORKDIR /src
 RUN apk add --no-cache git build-base
 COPY go.mod go.sum* ./
@@ -17,7 +22,8 @@ COPY . .
 RUN go run github.com/sqlc-dev/sqlc/cmd/sqlc@v1.30.0 generate -f internal/db/sqlc.yaml
 
 COPY --from=web-build /web/build ./internal/ui/dist
-RUN CGO_ENABLED=0 go build -ldflags="-s -w" -o /guetteur ./cmd/guetteur
+ARG TARGETOS TARGETARCH
+RUN CGO_ENABLED=0 GOOS=$TARGETOS GOARCH=$TARGETARCH go build -ldflags="-s -w" -o /guetteur ./cmd/guetteur
 
 FROM alpine:3.20
 RUN apk add --no-cache ca-certificates tzdata

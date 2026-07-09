@@ -122,13 +122,32 @@ func TestFilter_AlreadyDownloading(t *testing.T) {
 	}
 }
 
-func TestFilter_QueuedNotSkipped(t *testing.T) {
-
+func TestFilter_QueuedHashSkipped(t *testing.T) {
+	// A queued release is already tracked; re-matching it would re-trigger
+	// startDownload on every poll.
 	in := baseInput()
 	in.ExistingInfoHashes["aabbccdd"] = "queued"
 	got := Filter(in)
+	if got.Match {
+		t.Error("expected skip: hash already queued")
+	}
+}
+
+func TestFilter_FailedHashRetried(t *testing.T) {
+	in := baseInput()
+	in.ExistingInfoHashes["aabbccdd"] = "failed"
+	got := Filter(in)
 	if !got.Match {
-		t.Errorf("expected match for queued hash, got: %s", got.Reason)
+		t.Errorf("expected match for failed hash (retry candidate), got: %s", got.Reason)
+	}
+}
+
+func TestFilter_DeletedHashSkipped(t *testing.T) {
+	in := baseInput()
+	in.ExistingInfoHashes["aabbccdd"] = "deleted"
+	got := Filter(in)
+	if got.Match {
+		t.Error("expected skip: hash deleted by user")
 	}
 }
 
@@ -201,6 +220,17 @@ func TestFilter_EpisodeAlreadyCompleted(t *testing.T) {
 	got := Filter(in)
 	if got.Match {
 		t.Error("expected skip: episode 12 already completed")
+	}
+}
+
+func TestFilter_EpisodeDeleted(t *testing.T) {
+	// A deleted episode must not come back through the poll, even via another
+	// release with a different hash — only an explicit re-download restores it.
+	in := baseInput()
+	in.ExistingEpisodes[12] = "deleted"
+	got := Filter(in)
+	if got.Match {
+		t.Error("expected skip: episode 12 deleted")
 	}
 }
 

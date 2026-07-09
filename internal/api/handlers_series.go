@@ -1,6 +1,7 @@
 package api
 
 import (
+	"context"
 	"database/sql"
 	"encoding/json"
 	"net/http"
@@ -294,13 +295,56 @@ func (s *Server) handleFollow(w http.ResponseWriter, r *http.Request) {
 	idStr := chi.URLParam(r, "id")
 	s.setFollowState(w, r, 1)
 
-	if id, err := strconv.ParseInt(idStr, 10, 64); err == nil && s.triggerSeriesPoll != nil {
-		s.triggerSeriesPoll(id)
+	if id, err := strconv.ParseInt(idStr, 10, 64); err == nil && s.sched.TriggerSeriesPoll != nil {
+		s.sched.TriggerSeriesPoll(id)
 	}
 }
 
 func (s *Server) handleIgnore(w http.ResponseWriter, r *http.Request)  { s.setFollowState(w, r, 0) }
 func (s *Server) handleArchive(w http.ResponseWriter, r *http.Request) { s.setFollowState(w, r, 2) }
+
+// runSeriesOp validates the series id and runs a scheduler operation on it,
+// answering 204 on success. op == nil means the scheduler isn't wired (tests).
+func (s *Server) runSeriesOp(w http.ResponseWriter, r *http.Request, op func(ctx context.Context, seriesID int64) error) {
+	ctx := r.Context()
+	id, err := strconv.ParseInt(chi.URLParam(r, "id"), 10, 64)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, "invalid id")
+		return
+	}
+	if op == nil {
+		writeError(w, http.StatusServiceUnavailable, "operation unavailable")
+		return
+	}
+	if _, err := s.q.GetSeriesByID(ctx, id); err != nil {
+		writeError(w, http.StatusNotFound, "series not found")
+		return
+	}
+	if err := op(ctx, id); err != nil {
+		writeError(w, http.StatusInternalServerError, "operation failed")
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
+}
+
+// handleDeleteSeriesReleases deletes every downloaded episode of the series
+// (files + torrents) but keeps the follow and the release history.
+func (s *Server) handleDeleteSeriesReleases(w http.ResponseWriter, r *http.Request) {
+	s.runSeriesOp(w, r, s.sched.DeleteSeriesReleases)
+}
+
+// handleRedownloadSeries requeues every deleted/failed/completed release of
+// the series.
+func (s *Server) handleRedownloadSeries(w http.ResponseWriter, r *http.Request) {
+	s.runSeriesOp(w, r, s.sched.RedownloadSeriesReleases)
+}
+
+// handleDeleteSeriesData wipes everything guetteur holds for a series: files
+// on disk, release history and active torrents. The series stays in the
+// catalog but is unfollowed.
+func (s *Server) handleDeleteSeriesData(w http.ResponseWriter, r *http.Request) {
+	s.runSeriesOp(w, r, s.sched.DeleteSeriesData)
+}
 
 type patchSeriesBody struct {
 	PreferredGroups *[]string `json:"preferred_groups"`

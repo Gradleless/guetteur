@@ -26,7 +26,20 @@ func newTestServer(t *testing.T) (*api.Server, *dbgen.Queries) {
 	}
 	t.Cleanup(func() { conn.Close() })
 	q := dbgen.New(conn)
-	srv := api.New(&config.Config{}, q, nil, nil, nil, nil, nil, nil)
+	srv := api.New(&config.Config{}, q, nil, nil, nil, nil, api.SchedulerHooks{})
+	return srv, q
+}
+
+func newTestServerWithHooks(t *testing.T, hooks api.SchedulerHooks) (*api.Server, *dbgen.Queries) {
+	t.Helper()
+	path := filepath.Join(t.TempDir(), "test.db")
+	conn, err := db.Open(context.Background(), path)
+	if err != nil {
+		t.Fatalf("db.Open: %v", err)
+	}
+	t.Cleanup(func() { conn.Close() })
+	q := dbgen.New(conn)
+	srv := api.New(&config.Config{}, q, nil, nil, nil, nil, hooks)
 	return srv, q
 }
 

@@ -1,9 +1,10 @@
 package api
 
 import (
-	"database/sql"
 	"net/http"
 	"time"
+
+	"github.com/go-chi/chi/v5"
 
 	dbgen "github.com/gradleless/guetteur/internal/db/generated"
 )
@@ -82,10 +83,12 @@ func (s *Server) handleListDownloads(w http.ResponseWriter, r *http.Request) {
 		statuses = []string{"completed"}
 	case "failed":
 		statuses = []string{"failed"}
+	case "deleted":
+		statuses = []string{"deleted"}
 	case "all":
-		statuses = []string{"queued", "downloading", "completed", "failed", "skipped", "superseded"}
+		statuses = []string{"queued", "downloading", "completed", "failed", "deleted", "skipped", "superseded"}
 	default:
-		writeError(w, http.StatusBadRequest, "status must be active|completed|failed|all")
+		writeError(w, http.StatusBadRequest, "status must be active|completed|failed|deleted|all")
 		return
 	}
 
@@ -140,32 +143,66 @@ func (s *Server) handleListDownloads(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, out)
 }
 
+// handleDeleteDownload cancels/deletes a release: torrent dropped, files
+// removed from the media folder, status set to "deleted" so the poll won't
+// grab the episode again.
 func (s *Server) handleDeleteDownload(w http.ResponseWriter, r *http.Request) {
-	panic("TODO: phase 3 — handleDeleteDownload")
-}
-
-func (s *Server) handleRetryDownload(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
-	infoHash := r.PathValue("infoHash")
+	infoHash := chi.URLParam(r, "infoHash")
 	if infoHash == "" {
 		writeError(w, http.StatusBadRequest, "missing infoHash")
 		return
 	}
+	if s.sched.DeleteRelease == nil {
+		writeError(w, http.StatusServiceUnavailable, "delete unavailable")
+		return
+	}
+
 	rel, err := s.q.GetReleaseByInfoHash(ctx, infoHash)
 	if err != nil {
 		writeError(w, http.StatusNotFound, "release not found")
 		return
 	}
-	if rel.Status != "failed" {
-		writeError(w, http.StatusConflict, "release is not in failed state")
+	if rel.Status == "deleted" {
+		w.WriteHeader(http.StatusNoContent)
 		return
 	}
-	if err := s.q.UpdateReleaseStatus(ctx, dbgen.UpdateReleaseStatusParams{
-		InfoHash: infoHash,
-		Status:   "queued",
-		ErrorMsg: sql.NullString{},
-	}); err != nil {
-		writeError(w, http.StatusInternalServerError, "retry failed")
+
+	if err := s.sched.DeleteRelease(ctx, rel.InfoHash); err != nil {
+		writeError(w, http.StatusInternalServerError, "delete failed")
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
+}
+
+// handleRedownloadDownload requeues a deleted, failed or completed release and
+// restarts its download from the stored magnet.
+func (s *Server) handleRedownloadDownload(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+	infoHash := chi.URLParam(r, "infoHash")
+	if infoHash == "" {
+		writeError(w, http.StatusBadRequest, "missing infoHash")
+		return
+	}
+	if s.sched.RedownloadRelease == nil {
+		writeError(w, http.StatusServiceUnavailable, "redownload unavailable")
+		return
+	}
+
+	rel, err := s.q.GetReleaseByInfoHash(ctx, infoHash)
+	if err != nil {
+		writeError(w, http.StatusNotFound, "release not found")
+		return
+	}
+	switch rel.Status {
+	case "deleted", "failed", "completed":
+	default:
+		writeError(w, http.StatusConflict, "release is already active")
+		return
+	}
+
+	if err := s.sched.RedownloadRelease(ctx, rel.InfoHash); err != nil {
+		writeError(w, http.StatusInternalServerError, "redownload failed")
 		return
 	}
 	w.WriteHeader(http.StatusNoContent)

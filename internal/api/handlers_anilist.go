@@ -1,11 +1,8 @@
 package api
 
 import (
-	"context"
 	"encoding/json"
 	"net/http"
-
-	"github.com/gradleless/guetteur/internal/anilist"
 )
 
 func (s *Server) handleAnilistSearch(w http.ResponseWriter, r *http.Request) {
@@ -37,7 +34,11 @@ func (s *Server) handleAnilistImport(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if err := s.importMedia(r.Context(), *m); err != nil {
+	if s.sched.ImportMedia == nil {
+		writeError(w, http.StatusServiceUnavailable, "import unavailable")
+		return
+	}
+	if err := s.sched.ImportMedia(r.Context(), *m); err != nil {
 		writeError(w, http.StatusInternalServerError, "import failed")
 		return
 	}
@@ -49,5 +50,3 @@ func (s *Server) handleAnilistImport(w http.ResponseWriter, r *http.Request) {
 	}
 	writeJSON(w, http.StatusOK, toSeriesResponse(se, nil))
 }
-
-type importMediaFunc func(ctx context.Context, m anilist.Media) error
